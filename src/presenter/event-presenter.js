@@ -1,6 +1,7 @@
 import EventsItemView from '../view/events-item-view.js';
-import EventsItemFormView, {BLANK_EVENT} from '../view/events-item-form-view.js';
+import EventsItemFormView from '../view/events-item-form-view.js';
 import {remove, render, replace} from '../framework/render.js';
+import {UpdateType, UserAction} from './events-presenter.js';
 
 const Mode = {
   VIEW_EVENT: 'VIEW_EVENT',
@@ -17,26 +18,26 @@ export default class EventPresenter {
   #offersModel = null;
 
   #event = null;
-  #destination = null;
+  #fullDestination = null;
   #selectedOffers = [];
   #allDestinations = [];
 
-  #handleEventItemChange = null;
   #mode = Mode.VIEW_EVENT;
   #handleModeChange = null;
+  #handleDataChange = null;
 
-  constructor({eventsListContainer, destinationsModel, offersModel, onEventItemChange, onModeChange}) {
+  constructor({eventsListContainer, destinationsModel, offersModel, onModeChange, onDataChange}) {
     this.#eventsListContainer = eventsListContainer;
     this.#destinationsModel = destinationsModel;
     this.#offersModel = offersModel;
     this.#allDestinations = [...this.#destinationsModel.destinations];
-    this.#handleEventItemChange = onEventItemChange;
     this.#handleModeChange = onModeChange;
+    this.#handleDataChange = onDataChange;
   }
 
   init(event) {
     this.#event = event;
-    this.#destination = this.#destinationsModel.getDestinationsById(event.destination);
+    this.#fullDestination = this.#destinationsModel.getDestinationsById(event.destination);
     this.#selectedOffers = this.#offersModel.getOffersById(this.#event.type, this.#event.offers);
 
     const previousEventItem = this.#eventItem;
@@ -44,7 +45,7 @@ export default class EventPresenter {
 
     this.#eventItem = new EventsItemView({
       event: this.#event,
-      destination: this.#destination,
+      fullDestination: this.#fullDestination,
       selectedOffers: this.#selectedOffers,
       onOpenFormClick: this.#handleOpenFormClick,
       onFavoriteClick: this.#handleFavoriteClick,
@@ -53,11 +54,12 @@ export default class EventPresenter {
     this.#eventItemForm = new EventsItemFormView({
       isNewItem: false,
       event: this.#event,
-      destination: this.#destination,
+      fullDestination: this.#fullDestination,
       allDestinations: this.#allDestinations,
       offersByType: [...this.#offersModel.getOffersByType(this.#event.type)],
       onCloseFormClick: this.#handleCloseFormClick,
       onFormSubmit: this.#handleFormSubmit,
+      onFormDeleteClick: this.#handleFormDeleteClick,
       getEventItemOffersByType : this.#getEventItemOffersByType,
       getDestinationByName: this.#getDestinationByName,
     });
@@ -109,40 +111,64 @@ export default class EventPresenter {
   #getDestinationByName = (name) =>
     this.#destinationsModel.getDestinationByName(name);
 
-  #renderEventItemNewForm() {
-    this.#eventsItemNewForm = new EventsItemFormView({
-      isNewItem: true,
-      event: BLANK_EVENT,
-      destination: BLANK_EVENT.destination,
-      selectedOffers: BLANK_EVENT.offers,
-      allDestinations: this.#allDestinations,
-      offersByType: this.#offersModel.getOffersByType(BLANK_EVENT.type),
-      getEventItemOffersByType : this.#getEventItemOffersByType,
-    });
 
-    render(this.#eventsItemNewForm, this.#eventsListContainer);
-  }
+  // #renderEventItemNewForm() {
+  //   this.#eventsItemNewForm = new EventsItemFormView({
+  //     isNewItem: true,
+  //     event: BLANK_EVENT,
+  //     destination: BLANK_EVENT.destination,
+  //     selectedOffers: BLANK_EVENT.offers,
+  //     allDestinations: this.#allDestinations,
+  //     offersByType: this.#offersModel.getOffersByType(BLANK_EVENT.type),
+  //     getEventItemOffersByType : this.#getEventItemOffersByType,
+  //   });
+  //
+  //   render(this.#eventsItemNewForm, this.#eventsListContainer);
+  // }
 
   #handleOpenFormClick = () => {
     this.#replaceEventToForm();
   };
 
-  #handleCloseFormClick = (event) => {
-    this.#handleEventItemChange(event);
+  #handleCloseFormClick = () => {
+    this.#eventItemForm.reset(this.#event);
+    this.#replaceFormToEvent();
+  };
+
+  #handleFormSubmit = (updatedEvent) => {
+    const isMinorUpdate =
+      this.#event.dateFrom !== updatedEvent.dateFrom ||
+      this.#event.dateTo !== updatedEvent.dateTo ||
+      this.#event.basePrice !== updatedEvent.basePrice;
+
+    const currentUpdateType = isMinorUpdate ?
+      UpdateType.MINOR : UpdateType.PATCH;
+
+    this.#handleDataChange(
+      UserAction.UPDATE_EVENT,
+      currentUpdateType,
+      updatedEvent,
+    );
     this.#replaceFormToEvent();
 
   };
 
-  #handleFormSubmit = (event) => {
-    this.#handleEventItemChange(event);
-    this.#replaceFormToEvent();
+  #handleFormDeleteClick = (deletedEvent) => {
+    this.#handleDataChange(
+      UserAction.DELETE_EVENT,
+      UpdateType.MINOR,
+      deletedEvent
+    );
   };
 
   #handleFavoriteClick = () => {
-    this.#handleEventItemChange({
-      ...this.#event,
-      isFavorite: !this.#event.isFavorite
-    });
+    this.#handleDataChange(
+      UserAction.UPDATE_EVENT,
+      UpdateType.PATCH,
+      {...this.#event,
+        isFavorite: !this.#event.isFavorite,
+      },
+    );
   };
 
   #escKeyDownHandler = (evt) => {
