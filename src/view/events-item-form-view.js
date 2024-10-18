@@ -20,11 +20,12 @@ const MAX_PRICE = 100000;
 export default class EventsItemFormView extends AbstractStatefulView {
   #isNewItem = null;
   #initialEvent = null;
-  #destination = null;
+  #fullDestination = null;
   #allDestinations = [];
   #offersByType = [];
   #handleCloseFormClick = null;
   #handleFormSubmit = null;
+  #handleFormDeleteClick = null;
   #getEventItemOffersByType = null;
   #getDestinationByName = null;
   #datepickerFrom = null;
@@ -33,25 +34,27 @@ export default class EventsItemFormView extends AbstractStatefulView {
   constructor({
     isNewItem,
     event,
-    destination,
+    fullDestination,
     allDestinations,
     offersByType,
     onCloseFormClick,
     onFormSubmit,
+    onFormDeleteClick,
     getEventItemOffersByType,
     getDestinationByName,
   }) {
     super();
     this.#isNewItem = isNewItem;
     this.#initialEvent = event;
-    this.#destination = destination;
+    this.#fullDestination = fullDestination;
     this.#allDestinations = allDestinations;
     this.#offersByType = offersByType;
     this.#handleCloseFormClick = onCloseFormClick;
     this.#handleFormSubmit = onFormSubmit;
+    this.#handleFormDeleteClick = onFormDeleteClick;
     this.#getEventItemOffersByType = getEventItemOffersByType;
     this.#getDestinationByName = getDestinationByName;
-    this._setState(EventsItemFormView.parseEventToState(event, destination, offersByType));
+    this._setState(EventsItemFormView.parseEventToState(event, fullDestination, offersByType));
     this._restoreHandlers();
   }
 
@@ -68,6 +71,10 @@ export default class EventsItemFormView extends AbstractStatefulView {
     this.element
       .querySelector('.event--edit')
       .addEventListener('submit', this.#formSubmitHandler);
+
+    this.element
+      .querySelector('.event__reset-btn')
+      .addEventListener('click', this.#formDeleteClicktHandler);
 
     this.element
       .querySelector('.event__type-group')
@@ -92,7 +99,7 @@ export default class EventsItemFormView extends AbstractStatefulView {
     this.element.querySelectorAll('.event__input')
       .forEach((input) => input.blur());
     this.updateElement(
-      EventsItemFormView.parseEventToState(event, this.#destination,
+      EventsItemFormView.parseEventToState(event, this.#fullDestination,
         this.#offersByType)
     );
   }
@@ -160,7 +167,7 @@ export default class EventsItemFormView extends AbstractStatefulView {
       !Number.isSafeInteger(this._state.basePrice) ||
       this._state.basePrice <= 0 ||
       this._state.basePrice > MAX_PRICE;
-    const isDestinationInvalid = !this._state.destination;
+    const isDestinationInvalid = !this._state.fullDestination;
     const isDateInvalid =
       dayjs(this._state.dateTo).isBefore(this._state.dateFrom) ||
       !this._state.dateFrom ||
@@ -191,7 +198,12 @@ export default class EventsItemFormView extends AbstractStatefulView {
 
   #formSubmitHandler = (evt) => {
     evt.preventDefault(evt);
-    this.#handleFormSubmit(EventsItemFormView.parseStateToEvent(this.#initialEvent));
+    this.#handleFormSubmit(EventsItemFormView.parseStateToEvent(this._state));
+  };
+
+  #formDeleteClicktHandler = (evt) => {
+    evt.preventDefault();
+    this.#handleFormDeleteClick(this._state);
   };
 
   #eventTypeChangeHandler = (evt) => {
@@ -214,8 +226,15 @@ export default class EventsItemFormView extends AbstractStatefulView {
     const newDestination = this.#getDestinationByName(targetDestination);
 
     this.updateElement({
-      destination: newDestination ?? '',
+      fullDestination: newDestination ?? '',
     });
+
+    if (newDestination) {
+      this._setState({
+        ...this._state.event,
+        destination: newDestination.id,
+      });
+    }
 
     this.#validateForm();
   };
@@ -240,9 +259,9 @@ export default class EventsItemFormView extends AbstractStatefulView {
     });
   };
 
-  static parseEventToState(event, destination, offersByType) {
+  static parseEventToState(event, fullDestination, offersByType) {
     return {...event,
-      destination,
+      fullDestination,
       offersByType,
     };
   }
