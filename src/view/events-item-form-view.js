@@ -30,6 +30,7 @@ export default class EventsItemFormView extends AbstractStatefulView {
   #getDestinationByName = null;
   #datepickerFrom = null;
   #datepickerTo = null;
+  #minEndDate = null;
 
   constructor({
     isNewItem,
@@ -64,9 +65,19 @@ export default class EventsItemFormView extends AbstractStatefulView {
 
   _restoreHandlers() {
     if (!this.#isNewItem) {
-      this.element.querySelector('.event__rollup-btn').
-        addEventListener('click', this.#closeFormClickHandler);
+      this.element
+        .querySelector('.event__rollup-btn')
+        .addEventListener('click', this.#closeFormClickHandler);
     }
+
+    this.element
+      .querySelectorAll('.event__input')
+      .forEach((input) =>
+        input.addEventListener('blur', this.#inputBlurHandler));
+
+    this.element
+      .querySelector('.event__save-btn')
+      .addEventListener('click', this.#saveFormClickHandler);
 
     this.element
       .querySelector('.event--edit')
@@ -74,7 +85,7 @@ export default class EventsItemFormView extends AbstractStatefulView {
 
     this.element
       .querySelector('.event__reset-btn')
-      .addEventListener('click', this.#formDeleteClicktHandler);
+      .addEventListener('click', this.#formDeleteClickHandler);
 
     this.element
       .querySelector('.event__type-group')
@@ -86,7 +97,15 @@ export default class EventsItemFormView extends AbstractStatefulView {
 
     this.element
       .querySelector('.event__input--price')
+      .addEventListener('focus', this.#eventPriceFocusHandler);
+
+    this.element
+      .querySelector('.event__input--price')
       .addEventListener('input', this.#eventPriceInputHandler);
+
+    this.element
+      .querySelector('.event__input--price')
+      .addEventListener('blur', this.#eventPriceBlurHandler);
 
     this.element
       .querySelector('.event__available-offers')
@@ -126,6 +145,7 @@ export default class EventsItemFormView extends AbstractStatefulView {
     const isDestinationInvalid = !this._state.fullDestination;
     const isDateInvalid =
       dayjs(this._state.dateTo).isBefore(this._state.dateFrom) ||
+      dayjs(this._state.dateTo).isSame(this._state.dateFrom) ||
       !this._state.dateFrom ||
       !this._state.dateTo;
 
@@ -146,17 +166,29 @@ export default class EventsItemFormView extends AbstractStatefulView {
         .disabled = true;
     }
 
+    if (!isDateInvalid) {
+      this.element.querySelector('.event__field-group--time').
+        classList.remove('event__field-group--invalid');
+    }
     if (!isPriceInvalid) {
-      this.element.querySelector('.event__save-btn')
-        .disabled = false;
       this.element.querySelector('.event__field-group--price').
         classList.remove('event__field-group--invalid');
     }
+    if (!isPriceInvalid && !isDestinationInvalid && !isDateInvalid) {
+      this.element.querySelector('.event__save-btn')
+        .disabled = false;
+    }
   }
+
+  #setMinEndDate = () => {
+    const startDateCopy = new Date(this._state?.dateFrom);
+    this.#minEndDate = startDateCopy.setMinutes(startDateCopy.getMinutes() + 1);
+  };
 
   #setDatepickers = () => {
     const startDateElement = this.element.querySelector('.event__input--time[name="event-start-time"]');
     const endDateElement = this.element.querySelector('.event__input--time[name="event-end-time"]');
+
     const flatpickrConfig = {
       dateFormat: 'd/m/y H:i',
       enableTime: true,
@@ -169,32 +201,51 @@ export default class EventsItemFormView extends AbstractStatefulView {
     this.#datepickerFrom = flatpickr(startDateElement, {
       ...flatpickrConfig,
       defaultDate: this._state.dateFrom,
-      onClose: this.#startDateCloseHandler,
+      onChange: this.#startDateChangeHandler,
     });
 
     this.#datepickerTo = flatpickr(endDateElement, {
       ...flatpickrConfig,
       defaultDate: this._state.dateTo,
+      onChange: this.#endDateChangeHandler,
+      onOpen: this.#endDateOpenHandler,
       onClose: this.#endDateCloseHandler,
-      minDate: this._state.dateFrom
+      minDate: this.#minEndDate,
     });
   };
 
-  #startDateCloseHandler = ([enteredDate]) => {
-    this.updateElement({
+  #startDateChangeHandler = ([enteredDate]) => {
+    this._setState({
       ...this._state,
       dateFrom: enteredDate ?? ''
     });
-    this.#datepickerTo.set('minDate', this._state.dateFrom);
+
     this.#validateForm();
   };
 
-  #endDateCloseHandler = ([enteredDate]) => {
-    this.updateElement({
+  #endDateOpenHandler = () => {
+    this.#setMinEndDate();
+    this.#datepickerTo.set('minDate', this.#minEndDate);
+  };
+
+  #endDateChangeHandler = ([enteredDate]) => {
+    this._setState({
       ...this._state,
       dateTo: enteredDate ?? ''
     });
+
+    if (this._state.dateTo) {
+      this.#datepickerTo.input.value = flatpickr.formatDate(this._state.dateTo,
+        'd/m/y H:i');
+    }
+
     this.#validateForm();
+  };
+
+  #endDateCloseHandler = () => {
+    if (this._state.dateTo) {
+      this.#datepickerTo.input.value = flatpickr.formatDate(this._state.dateTo, 'd/m/y H:i');
+    }
   };
 
   #closeFormClickHandler = (evt) => {
@@ -202,12 +253,20 @@ export default class EventsItemFormView extends AbstractStatefulView {
     this.#handleCloseFormClick(EventsItemFormView.parseStateToEvent(this.#initialEvent));
   };
 
+  #inputBlurHandler = () => {
+    this.#validateForm();
+  };
+
+  #saveFormClickHandler = () => {
+    this.#validateForm();
+  };
+
   #formSubmitHandler = (evt) => {
     evt.preventDefault(evt);
     this.#handleFormSubmit(EventsItemFormView.parseStateToEvent(this._state));
   };
 
-  #formDeleteClicktHandler = (evt) => {
+  #formDeleteClickHandler = (evt) => {
     evt.preventDefault();
     this.#handleFormDeleteClick(this._state);
   };
@@ -241,8 +300,15 @@ export default class EventsItemFormView extends AbstractStatefulView {
         destination: newDestination.id,
       });
     }
+  };
 
-    this.#validateForm();
+  #eventPriceFocusHandler = () => {
+    const eventPriceInput = this.element
+      .querySelector('.event__input--price');
+
+    if (eventPriceInput.value === '0') {
+      eventPriceInput.value = '';
+    }
   };
 
   #eventPriceInputHandler = (evt) => {
@@ -255,6 +321,15 @@ export default class EventsItemFormView extends AbstractStatefulView {
     });
 
     this.#validateForm();
+  };
+
+  #eventPriceBlurHandler = () => {
+    const eventPriceInput = this.element
+      .querySelector('.event__input--price');
+
+    if (eventPriceInput.value === '') {
+      eventPriceInput.value = '0';
+    }
   };
 
   #offerChangeHandler = () => {
